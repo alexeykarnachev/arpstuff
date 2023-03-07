@@ -1,1 +1,1 @@
-gcc ./src/main.c -o HACKME
+gcc ./src/main.c -o arpstuff
