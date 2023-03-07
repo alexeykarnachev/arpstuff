@@ -158,7 +158,86 @@ ether_arp receive_arp_response(int fd, ether_arp arp_req) {
     return arp_res;
 }
 
+in_addr get_netmask_in_addr(const char* if_name) {
+    int fd;
+    fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd < 0) {
+        perror("socket");
+        exit(1);
+    }
+
+    struct ifreq ifr = {0};
+    strncpy(ifr.ifr_name, if_name, IFNAMSIZ - 1);
+
+    if (ioctl(fd, SIOCGIFNETMASK, &ifr) < 0) {
+        perror("SIOCGIFNETMASK");
+        close(fd);
+        exit(1);
+    }
+
+    sockaddr_in* addr = (sockaddr_in*)&ifr.ifr_netmask;
+    in_addr mask = addr->sin_addr;
+
+    close(fd);
+    return mask;
+}
+
+void generate_ip_addresses(
+    in_addr network_base_in_addr, char** ip_addresses, size_t num_addresses
+) {
+    uint32_t network = ntohl(network_base_in_addr.s_addr);
+    for (size_t i = 0; i < num_addresses; i++) {
+        uint32_t addr = network + i;
+        struct in_addr in_addr = {.s_addr = htonl(addr)};
+        char* ip_str = inet_ntoa(in_addr);
+        ip_addresses[i] = strdup(ip_str);
+    }
+}
+
+in_addr get_network_base_in_addr(
+    char* if_name, in_addr base_in_addr, in_addr netmask_in_addr
+) {
+    in_addr network_base_in_addr;
+    uint32_t b = ntohl(base_in_addr.s_addr);
+    uint32_t m = ntohl(netmask_in_addr.s_addr);
+    network_base_in_addr.s_addr = htonl(b & m);
+    return network_base_in_addr;
+}
+
+void print_in_addr(in_addr addr) {
+    char buffer[INET_ADDRSTRLEN];
+    const char* addr_str = inet_ntop(
+        AF_INET, &addr, buffer, INET_ADDRSTRLEN
+    );
+    if (addr_str == NULL) {
+        perror("inet_ntop");
+        return;
+    }
+    printf("%s\n", addr_str);
+}
+
 void main(void) {
+    char* if_name = "wlp1s0";
+    in_addr gateway_in_addr = get_gateway_in_addr(if_name);
+    in_addr netmask_in_addr = get_netmask_in_addr(if_name);
+    in_addr network_base_in_addr = get_network_base_in_addr(
+        if_name, gateway_in_addr, netmask_in_addr
+    );
+
+    size_t num_addresses = 1024;
+    char* ip_addresses[num_addresses];
+
+    generate_ip_addresses(
+        network_base_in_addr, ip_addresses, num_addresses
+    );
+
+    for (size_t i = 0; i < num_addresses; i++) {
+        printf("%s\n", ip_addresses[i]);
+        free(ip_addresses[i]);
+    }
+}
+
+void main2(void) {
     char* if_name = "wlp1s0";
     int fd = socket(AF_PACKET, SOCK_DGRAM, htons(ETH_P_ARP));
     if (fd == -1) {
