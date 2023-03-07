@@ -44,9 +44,7 @@ void broadcast_message(char* message) {
     close(sock);
 }
 
-int receive_responses(
-    char* message, char** responses, int max_responses
-) {
+int receive_responses(char* message, char** responses, int max_responses) {
     socklen_t addr_len;
 
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
@@ -71,7 +69,8 @@ int receive_responses(
 
     // Set a timeout on the socket so we don't block forever
     // struct timeval tv = {.tv_sec = 5, .tv_usec = 0};
-    // if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
+    // if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
+    // {
     //     perror("setsockopt");
     //     close(sock);
     //     exit(1);

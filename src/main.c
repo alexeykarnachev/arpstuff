@@ -1,45 +1,21 @@
 #include <arpa/inet.h>
+#include <linux/if_packet.h>
+#include <net/ethernet.h>
 #include <net/if.h>
+#include <netinet/if_ether.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
-#include <unistd.h>
-#include <netinet/if_ether.h>
 #include <sys/socket.h>
-#include <linux/if_packet.h>
-#include <net/ethernet.h>
+#include <unistd.h>
 
 typedef struct in_addr in_addr;
 typedef struct ifreq ifreq;
 typedef struct ether_arp ether_arp;
-
-ifreq get_ifr(char* if_name) {
-    struct ifreq ifr;
-    strncpy(ifr.ifr_name, if_name, IFNAMSIZ - 1);
-
-    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-    ioctl(sockfd, SIOCGIFHWADDR, &ifr);
-    close(sockfd);
-
-    return ifr;
-}
-
-// void get_ip_mac(unsigned char* mac, )
-
-void get_mac_str(char* mac_str, unsigned char* mac) {
-    sprintf(
-        mac_str,
-        "%02x:%02x:%02x:%02x:%02x:%02x",
-        mac[0],
-        mac[1],
-        mac[2],
-        mac[3],
-        mac[4],
-        mac[5]
-    );
-}
+typedef struct sockaddr_in sockaddr_in;
+typedef struct sockaddr_ll sockaddr_ll;
 
 in_addr get_gateway_in_addr(const char* if_name) {
     FILE* f = fopen("/proc/net/route", "r");
@@ -69,105 +45,74 @@ in_addr get_gateway_in_addr(const char* if_name) {
     return addr;
 }
 
-// void get_ifr_hwaddr(int fd, struct ifreq *ifr) {
-// }
+ether_arp build_arp_request(
+    int fd, const char* if_name, in_addr target_in_addr
+) {
+    ifreq ifr;
+    sockaddr_ll addr = {0};
+    ether_arp req = {0};
 
-ether_arp request_mac(ifreq* ifr, uint32_t ip_addr) {
-    /* get arp socket */
-    int fd = socket(AF_PACKET, SOCK_DGRAM, htons(ETH_P_ARP));
-	if (fd == -1) {
-        perror("socket");
+    // Get interface index and MAC address
+    memset(&ifr, 0, sizeof(ifr));
+    strncpy(ifr.ifr_name, if_name, IFNAMSIZ - 1);
+    if (ioctl(fd, SIOCGIFINDEX, &ifr) < 0) {
+        perror("SIOCGIFINDEX");
         exit(1);
-	}
-
-    /* will be sent to everyone */
-	const unsigned char ether_broadcast_addr[] =
-	{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
-
-	if (ioctl(fd, SIOCGIFINDEX, ifr) == -1) {
-        perror("ioctl");
+    }
+    if (ioctl(fd, SIOCGIFHWADDR, &ifr) < 0) {
+        perror("SIOCGIFHWADDR");
         exit(1);
-	}
+    }
+    memcpy(req.arp_sha, ifr.ifr_hwaddr.sa_data, ETHER_ADDR_LEN);
 
-	/* special socket address type used for AF_PACKET */
-	struct sockaddr_ll addr = {0};
-	addr.sll_family   = AF_PACKET;
-	addr.sll_ifindex  = ifr->ifr_ifindex;
-	addr.sll_halen    = ETHER_ADDR_LEN;
-	addr.sll_protocol = htons(ETH_P_ARP);
-	memcpy(addr.sll_addr, ether_broadcast_addr, ETHER_ADDR_LEN);
+    // Set ARP request fields
+    req.arp_hrd = htons(ARPHRD_ETHER);
+    req.arp_pro = htons(ETH_P_IP);
+    req.arp_hln = ETHER_ADDR_LEN;
+    req.arp_pln = sizeof(in_addr_t);
+    req.arp_op = htons(1);
 
-	/* construct the ARP request */
-    struct ether_arp req;
-	req.arp_hrd = htons(ARPHRD_ETHER);
-	req.arp_pro = htons(ETH_P_IP);
-	req.arp_hln = ETHER_ADDR_LEN;
-	req.arp_pln = sizeof(in_addr_t);
-	req.arp_op  = htons(ARPOP_REQUEST);
-
-	/* zero because that's what we're asking for */
-	memset(&req.arp_tha, 0, sizeof(req.arp_tha));
-	memcpy(&req.arp_tpa, &ip_addr, sizeof(req.arp_tpa));
-
-    if (ioctl(fd, SIOCGIFADDR, ifr) == -1) {
-        perror("ioctl");
+    // Set source and target IP addresses
+    if (ioctl(fd, SIOCGIFADDR, &ifr) < 0) {
+        perror("SIOCGIFADDR");
         exit(1);
-	}
+    }
+    in_addr source_in_addr
+        = ((struct sockaddr_in*)&ifr.ifr_addr)->sin_addr;
+    memcpy(req.arp_spa, &source_in_addr, sizeof(source_in_addr));
+    memcpy(req.arp_tpa, &target_in_addr, sizeof(target_in_addr));
 
-	memcpy(&req.arp_sha, (unsigned char *) ifr->ifr_hwaddr.sa_data, sizeof(req.arp_sha));
-	// memcpy(&req.arp_spa, (unsigned char *) ifr->ifr_addr.sa_data + 2, sizeof(req.arp_spa));
+    // Set broadcast MAC address
+    memset(addr.sll_addr, 0xff, ETHER_ADDR_LEN);
+    addr.sll_family = AF_PACKET;
+    addr.sll_ifindex = ifr.ifr_ifindex;
+    addr.sll_protocol = htons(ETH_P_ARP);
+    addr.sll_halen = ETHER_ADDR_LEN;
 
-	/* actually send it */
-	if (sendto(fd, &req, sizeof(struct ether_arp), 0, (struct sockaddr *) &addr, sizeof(addr)) == -1) {
-        perror("sendto");
-        exit(1);
-	}
-
-	while (1) {
-		/* can't use recvfrom() -- no network layer */
-		int len = recv(fd, &req, sizeof(struct ether_arp), 0);
-		if (len == -1) {
-            perror("recv");
-            exit(1);
-		}
-		if (len == 0) {   /* no response */
-			continue;
-		}
-
-		unsigned int from_addr =
-			(req.arp_spa[3] << 24)
-		      | (req.arp_spa[2] << 16)
-		      | (req.arp_spa[1] << 8)
-		      | (req.arp_spa[0] << 0);
-		if (from_addr != ip_addr) {
-			continue;
-		}
-
-		break;
-	}
+    // Print ARP request information
+    printf("ARP request:\n");
+    printf(
+        "\tSource MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
+        req.arp_sha[0],
+        req.arp_sha[1],
+        req.arp_sha[2],
+        req.arp_sha[3],
+        req.arp_sha[4],
+        req.arp_sha[5]
+    );
+    printf("\tSource IP: %s\n", inet_ntoa(source_in_addr));
+    printf("\tTarget IP: %s\n", inet_ntoa(target_in_addr));
 
     return req;
 }
 
-int main() {
+void main(void) {
     char* if_name = "wlp1s0";
-    ifreq ifr = get_ifr(if_name);
-
-    char my_mac_str[18];
-    get_mac_str(my_mac_str, ifr.ifr_hwaddr.sa_data);
-
-    char gateway_ip_str[18];
+    int fd = socket(AF_PACKET, SOCK_DGRAM, htons(ETH_P_ARP));
+    if (fd == -1) {
+        perror("socket");
+        exit(1);
+    }
     in_addr gateway_in_addr = get_gateway_in_addr(if_name);
-    inet_ntop(AF_INET, &gateway_in_addr, gateway_ip_str, INET_ADDRSTRLEN);
-
-
-    char gateway_mac_str[18];
-    ether_arp arpr = request_mac(&ifr, gateway_in_addr.s_addr);
-    get_mac_str(gateway_mac_str, arpr.arp_sha);
-
-    printf("my mac: %s\n", my_mac_str);
-    printf("gateway ip: %s\n", gateway_ip_str);
-    printf("gateway mac: %s\n", gateway_mac_str);
-
-    return 0;
+    build_arp_request(fd, if_name, gateway_in_addr);
 }
