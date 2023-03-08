@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <errno.h>
 #include <linux/if_packet.h>
 #include <net/ethernet.h>
 #include <net/if.h>
@@ -89,6 +90,18 @@ void get_mac_str(char mac_str[18], unsigned char mac[6]) {
     );
 }
 
+void print_in_addr(in_addr addr) {
+    char buffer[INET_ADDRSTRLEN];
+    const char* addr_str = inet_ntop(
+        AF_INET, &addr, buffer, INET_ADDRSTRLEN
+    );
+    if (addr_str == NULL) {
+        perror("inet_ntop");
+        return;
+    }
+    printf("%s\n", addr_str);
+}
+
 void print_arp_request(ether_arp req) {
     in_addr source_in_addr;
     in_addr target_in_addr;
@@ -130,24 +143,30 @@ void send_arp_request(int fd, char* if_name, ether_arp arp_req) {
     }
 }
 
-ether_arp receive_arp_response(int fd, ether_arp arp_req) {
+int receive_arp_response(int fd, ether_arp arp_req, ether_arp* arp_res) {
     in_addr target_in_addr;
     memcpy(&target_in_addr, &arp_req.arp_tpa, sizeof(in_addr));
 
-    ether_arp arp_res;
+    int n_tries = 1;
     while (1) {
-        int len = recv(fd, &arp_res, sizeof(ether_arp), 0);
+        if (n_tries == 0) {
+            return 0;
+        }
+        int len = recv(fd, arp_res, sizeof(ether_arp), 0);
         if (len == -1) {
-            perror("recv");
-            exit(1);
+            printf("No data received\n");
+            n_tries -= 1;
+            continue;
+            // return 0;
+            // break;
         } else if (len == 0) {
             continue;
         }
 
-        uint32_t from_addr = (arp_res.arp_spa[3] << 24)
-                             | (arp_res.arp_spa[2] << 16)
-                             | (arp_res.arp_spa[1] << 8)
-                             | (arp_res.arp_spa[0] << 0);
+        uint32_t from_addr = (arp_res->arp_spa[3] << 24)
+                             | (arp_res->arp_spa[2] << 16)
+                             | (arp_res->arp_spa[1] << 8)
+                             | (arp_res->arp_spa[0] << 0);
         if (from_addr != target_in_addr.s_addr) {
             continue;
         }
@@ -155,7 +174,7 @@ ether_arp receive_arp_response(int fd, ether_arp arp_req) {
         break;
     }
 
-    return arp_res;
+    return 1;
 }
 
 in_addr get_netmask_in_addr(const char* if_name) {
@@ -182,78 +201,57 @@ in_addr get_netmask_in_addr(const char* if_name) {
     return mask;
 }
 
-void generate_ip_addresses(
-    in_addr network_base_in_addr, char** ip_addresses, size_t num_addresses
-) {
-    uint32_t network = ntohl(network_base_in_addr.s_addr);
-    for (size_t i = 0; i < num_addresses; i++) {
-        uint32_t addr = network + i;
-        struct in_addr in_addr = {.s_addr = htonl(addr)};
-        char* ip_str = inet_ntoa(in_addr);
-        ip_addresses[i] = strdup(ip_str);
-    }
-}
-
-in_addr get_network_base_in_addr(
+in_addr get_netbase_in_addr(
     char* if_name, in_addr base_in_addr, in_addr netmask_in_addr
 ) {
-    in_addr network_base_in_addr;
+    in_addr netbase_in_addr;
     uint32_t b = ntohl(base_in_addr.s_addr);
     uint32_t m = ntohl(netmask_in_addr.s_addr);
-    network_base_in_addr.s_addr = htonl(b & m);
-    return network_base_in_addr;
-}
-
-void print_in_addr(in_addr addr) {
-    char buffer[INET_ADDRSTRLEN];
-    const char* addr_str = inet_ntop(
-        AF_INET, &addr, buffer, INET_ADDRSTRLEN
-    );
-    if (addr_str == NULL) {
-        perror("inet_ntop");
-        return;
-    }
-    printf("%s\n", addr_str);
+    netbase_in_addr.s_addr = htonl(b & m);
+    return netbase_in_addr;
 }
 
 void main(void) {
     char* if_name = "wlp1s0";
     in_addr gateway_in_addr = get_gateway_in_addr(if_name);
     in_addr netmask_in_addr = get_netmask_in_addr(if_name);
-    in_addr network_base_in_addr = get_network_base_in_addr(
+    in_addr netbase_in_addr = get_netbase_in_addr(
         if_name, gateway_in_addr, netmask_in_addr
     );
 
-    size_t num_addresses = 1024;
-    char* ip_addresses[num_addresses];
+    uint32_t i = 100;
+    while (i <= ~ntohl(netmask_in_addr.s_addr)) {
+        in_addr target_in_addr;
+        target_in_addr.s_addr = htonl(ntohl(netbase_in_addr.s_addr) + i);
 
-    generate_ip_addresses(
-        network_base_in_addr, ip_addresses, num_addresses
-    );
+        int fd = socket(AF_PACKET, SOCK_DGRAM, htons(ETH_P_ARP));
+        if (fd == -1) {
+            perror("socket");
+            exit(1);
+        }
 
-    for (size_t i = 0; i < num_addresses; i++) {
-        printf("%s\n", ip_addresses[i]);
-        free(ip_addresses[i]);
+        struct timeval tv;
+        tv.tv_sec = 1;
+        tv.tv_usec = 0;
+        if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv))
+            == -1) {
+            perror("setsockopt");
+            exit(1);
+        }
+
+        ether_arp arp_req = build_arp_request(fd, if_name, target_in_addr);
+
+        // printf("Sending arp request...\n");
+        send_arp_request(fd, if_name, arp_req);
+
+        // printf("Receiving arp response...\n");
+        ether_arp arp_res;
+        if (receive_arp_response(fd, arp_req, &arp_res)) {
+            printf("\n---------------------------\n");
+            print_arp_request(arp_req);
+            print_arp_request(arp_res);
+            printf("\n---------------------------\n");
+        }
+        i += 1;
     }
-}
-
-void main2(void) {
-    char* if_name = "wlp1s0";
-    int fd = socket(AF_PACKET, SOCK_DGRAM, htons(ETH_P_ARP));
-    if (fd == -1) {
-        perror("socket");
-        exit(1);
-    }
-    in_addr gateway_in_addr = get_gateway_in_addr(if_name);
-
-    ether_arp arp_req = build_arp_request(fd, if_name, gateway_in_addr);
-    print_arp_request(arp_req);
-
-    printf("Sending arp request...\n");
-    send_arp_request(fd, if_name, arp_req);
-
-    printf("Receiving arp response...\n");
-    ether_arp arp_res = receive_arp_response(fd, arp_req);
-
-    print_arp_request(arp_res);
 }
