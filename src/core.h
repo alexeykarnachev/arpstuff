@@ -21,6 +21,7 @@ typedef struct sockaddr_in sockaddr_in;
 typedef struct sockaddr_ll sockaddr_ll;
 
 typedef uint32_t u32;
+typedef unsigned char u8;
 
 typedef struct Mac {
     unsigned char bytes[6];
@@ -43,6 +44,7 @@ void send_arp_request(
     u32 target_addr_hl
 );
 int receive_arp_response(int sock, u32 target_addr_hl, ether_arp* arp_res);
+Mac request_target_mac(int sock, char* if_name, u32 target_addr_hl);
 
 void print_addr_l(u32 addr);
 void print_mac(Mac mac);

@@ -68,6 +68,23 @@ int receive_arp_response(
     return 1;
 }
 
+Mac request_target_mac(int sock, char* if_name, u32 target_addr_hl) {
+    u32 source_addr_hl = get_interface_addr_hl(if_name);
+    Mac source_mac = get_interface_mac(if_name);
+
+    send_arp_request(
+        sock, if_name, source_addr_hl, source_mac, target_addr_hl
+    );
+
+    ether_arp arp_res = {0};
+    receive_arp_response(sock, target_addr_hl, &arp_res);
+
+    Mac target_mac = {0};
+    memcpy(&target_mac.bytes, arp_res.arp_sha, sizeof(arp_res.arp_sha));
+
+    return target_mac;
+}
+
 void print_arp_request(ether_arp req) {
     in_addr source_in_addr;
     in_addr target_in_addr;
@@ -82,8 +99,7 @@ void print_arp_request(ether_arp req) {
     memcpy(&source_mac.bytes, req.arp_sha, sizeof(req.arp_sha));
     memcpy(&target_mac.bytes, req.arp_tha, sizeof(req.arp_tha));
 
-    printf("ARP request:");
-    printf("\n  MAC: ");
+    printf("  MAC: ");
     print_mac(source_mac);
     printf(" -> ");
     print_mac(target_mac);
