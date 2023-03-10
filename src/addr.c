@@ -1,5 +1,7 @@
 #include "core.h"
 
+Mac BROADCAST_MAC = {.bytes = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}};
+
 u32 get_netmask_hl(char* if_name) {
     ifreq ifr = {0};
     strncpy(ifr.ifr_name, if_name, IFNAMSIZ - 1);
@@ -74,6 +76,17 @@ u32 get_interface_addr_hl(char* if_name) {
     u32 addr_hl = ((struct sockaddr_in*)&ifr.ifr_addr)->sin_addr.s_addr;
 
     return addr_hl;
+}
+
+sockaddr_ll get_arp_sockaddr_ll(char* if_name, Mac mac) {
+    sockaddr_ll addr_ll = {0};
+    addr_ll.sll_family = AF_PACKET;
+    addr_ll.sll_protocol = htons(ETH_P_ARP);
+    addr_ll.sll_ifindex = if_nametoindex(if_name);
+    addr_ll.sll_halen = ETHER_ADDR_LEN;
+    memcpy(addr_ll.sll_addr, mac.bytes, ETHER_ADDR_LEN);
+
+    return addr_ll;
 }
 
 void print_addr_l(u32 addr) {
