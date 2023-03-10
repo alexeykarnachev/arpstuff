@@ -7,7 +7,9 @@ u32 get_netmask_hl(char* if_name) {
     strncpy(ifr.ifr_name, if_name, IFNAMSIZ - 1);
     int sock = get_socket(AF_INET, SOCK_DGRAM, 0);
     if (ioctl(sock, SIOCGIFNETMASK, &ifr) < 0) {
-        perror("ioctl(sock, SIOCGIFNETMASK, &ifr)");
+        perror(
+            "ERROR: get_netmask_hl, can't obtain SIOCGIFNETMASK from sock"
+        );
         close(sock);
         exit(1);
     }
@@ -54,7 +56,8 @@ Mac get_interface_mac(char* if_name) {
     strncpy(ifr.ifr_name, if_name, IFNAMSIZ - 1);
     int sock = get_socket(AF_INET, SOCK_DGRAM, 0);
     if (ioctl(sock, SIOCGIFHWADDR, &ifr) < 0) {
-        perror("ioctl(sock, SIOCGIFHWADDR, &ifr)");
+        perror("ERROR: get_interface_mask, can't obtain SIOCGIFHWADDR "
+               "from sock");
         exit(1);
     }
 
@@ -69,7 +72,8 @@ u32 get_interface_addr_hl(char* if_name) {
     strncpy(ifr.ifr_name, if_name, IFNAMSIZ - 1);
     int sock = get_socket(AF_INET, SOCK_DGRAM, 0);
     if (ioctl(sock, SIOCGIFADDR, &ifr) < 0) {
-        perror("ioctl(sock, SIOCGIFADDR, &ifr)");
+        perror("ERROR: get_interface_addr_hl, can't obtain SIOCGIFADDR "
+               "from sock");
         exit(1);
     }
 

