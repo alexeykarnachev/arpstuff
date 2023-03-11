@@ -102,8 +102,6 @@ int request_target_mac(
     int n_tries
 );
 
-void* start_eth_sniffer(void* eth_sniffer_args);
-
 void print_addr_l(u32 addr);
 void print_mac(Mac mac);
 void print_ether_arp(ether_arp arp);

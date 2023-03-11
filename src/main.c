@@ -3,15 +3,11 @@
 #include <signal.h>
 
 int ARP_SOCK = -1;
-int ETH_SOCK = -1;
 pthread_t ARP_SPOOF_TID = -1;
-pthread_t ETH_SNIFFER_TID = -1;
 ARPSpoofArgs ARP_SPOOF_ARGS = {0};
-ETHSnifferArgs ETH_SNIFFER_ARGS = {0};
 
 void sigint_handler(int sig) {
     ARP_SPOOF_ARGS.is_terminated = 1;
-    ETH_SNIFFER_ARGS.is_terminated = 1;
 }
 
 void main(void) {
@@ -87,33 +83,7 @@ void main(void) {
         exit(1);
     }
 
-    printf("------------------------------------\n");
-    printf("Spoofing...\n");
-
-    ETH_SOCK = get_eth_socket(if_name);
-
-    ETH_SNIFFER_ARGS.eth_sock = ETH_SOCK;
-    ETH_SNIFFER_ARGS.victim_mac = victim_mac;
-    ETH_SNIFFER_ARGS.attacker_mac = attacker_mac;
-    ETH_SNIFFER_ARGS.gateway_mac = gateway_mac;
-    ETH_SNIFFER_ARGS.is_terminated = 0;
-
-    if (pthread_create(
-            &ETH_SNIFFER_TID,
-            NULL,
-            start_eth_sniffer,
-            (void*)&ETH_SNIFFER_ARGS
-        )
-        != 0) {
-        fprintf(
-            stderr, "ERROR: Failed to create start_eth_sniffer thread\n"
-        );
-        exit(1);
-    }
-
     pthread_join(ARP_SPOOF_TID, NULL);
-    pthread_join(ETH_SNIFFER_TID, NULL);
     close(ARP_SOCK);
-    close(ETH_SOCK);
     exit(0);
 }
