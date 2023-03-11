@@ -78,11 +78,7 @@ void broadcast_arp_request(
     Mac source_mac
 );
 int receive_arp_reply(
-    int arp_sock,
-    u32 target_addr_hl,
-    ether_arp* rep,
-    int timeout_sec,
-    int n_tries
+    int arp_sock, u32 target_addr_hl, ether_arp* rep, int timeout_sec
 );
 void init_arp_spoof_args(
     ARPSpoofArgs* arp_spoof_args,

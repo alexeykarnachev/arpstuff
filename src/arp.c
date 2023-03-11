@@ -55,16 +55,8 @@ void broadcast_arp_request(
 }
 
 int receive_arp_reply(
-    int arp_sock,
-    u32 target_addr_hl,
-    ether_arp* rep,
-    int timeout_sec,
-    int n_tries
+    int arp_sock, u32 target_addr_hl, ether_arp* rep, int timeout_sec
 ) {
-    if (n_tries <= 0) {
-        return 0;
-    }
-
     fd_set socks;
     FD_ZERO(&socks);
     FD_SET(arp_sock, &socks);
@@ -72,35 +64,30 @@ int receive_arp_reply(
     timeout.tv_sec = timeout_sec;
     timeout.tv_usec = 0;
 
-    int ret = select(arp_sock + 1, &socks, NULL, NULL, &timeout);
-    if (ret == -1) {
-        perror("ERROR: receive_arp_reply, failed to select a socket");
-        goto fail;
-    } else if (ret == 0) {
-        return receive_arp_reply(
-            arp_sock, target_addr_hl, rep, timeout_sec, n_tries - 1
+    if (select(arp_sock + 1, &socks, NULL, NULL, &timeout) <= 0) {
+        fprintf(
+            stderr,
+            "WARNING: receive_arp_reply, failed to select a socket\n"
         );
+        return 0;
     }
 
-    int res = recv(arp_sock, rep, sizeof(ether_arp), 0);
-    if (res == -1) {
-        perror("ERROR: receive_arp_reply, failed to recv a reply from the "
-               "arp_sock");
-        goto fail;
+    if (recv(arp_sock, rep, sizeof(ether_arp), 0) == -1) {
+        fprintf(
+            stderr,
+            "WARNING: receive_arp_reply, failed to recv a reply from the "
+            "arp_sock\n"
+        );
+        return 0;
     }
 
     if (*(u32*)rep->arp_spa != target_addr_hl) {
         return receive_arp_reply(
-            arp_sock, target_addr_hl, rep, timeout_sec, n_tries
+            arp_sock, target_addr_hl, rep, timeout_sec
         );
     }
 
     return 1;
-
-fail:
-    fprintf(stderr, "ERROR: Failed to receive_arp_reply\n");
-    close(arp_sock);
-    exit(1);
 }
 
 int request_target_mac(
@@ -114,16 +101,19 @@ int request_target_mac(
     u32 source_addr_hl = get_interface_addr_hl(if_name);
     Mac source_mac = get_interface_mac(if_name);
 
-    broadcast_arp_request(
-        arp_sock, if_name, target_addr_hl, source_addr_hl, source_mac
-    );
-
     ether_arp rep;
-    if (receive_arp_reply(
-            arp_sock, target_addr_hl, &rep, timeout_sec, n_tries
-        )) {
-        memcpy(target_mac->bytes, rep.arp_sha, sizeof(rep.arp_sha));
-        return 1;
+    while (n_tries--) {
+        broadcast_arp_request(
+            arp_sock, if_name, target_addr_hl, source_addr_hl, source_mac
+        );
+
+        if (receive_arp_reply(
+                arp_sock, target_addr_hl, &rep, timeout_sec
+            )) {
+            memcpy(target_mac->bytes, rep.arp_sha, sizeof(rep.arp_sha));
+            return 1;
+        }
+        fprintf(stderr, "WARNING: Failed to request mac. Retrying...\n");
     }
 
     return 0;
@@ -239,5 +229,5 @@ void print_arp_spoof_args(ARPSpoofArgs* arp_spoof_args) {
     print_addr_l(arp_spoof_args->victim_addr_hl);
     printf("\n");
 
-    printf("Spoof period: %d s\n", arp_spoof_args->spoof_period_sec);
+    printf("Spoof period: %d sec\n", arp_spoof_args->spoof_period_sec);
 }
