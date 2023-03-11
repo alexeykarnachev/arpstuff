@@ -38,7 +38,7 @@ typedef struct ARPSpoofArgs {
     u32 gateway_addr_hl;
     Mac victim_mac;
     u32 victim_addr_hl;
-    int period_sec;
+    int spoof_period_sec;
     int is_terminated;
 } ARPSpoofArgs;
 
@@ -84,6 +84,13 @@ int receive_arp_reply(
     int timeout_sec,
     int n_tries
 );
+void init_arp_spoof_args(
+    ARPSpoofArgs* arp_spoof_args,
+    char* if_name,
+    int arp_sock,
+    char* victim_addr_str,
+    int spoof_period_sec
+);
 void send_arp_spoof(
     int arp_sock,
     char* if_name,
@@ -104,4 +111,7 @@ int request_target_mac(
 
 void print_addr_l(u32 addr);
 void print_mac(Mac mac);
-void print_ether_arp(ether_arp arp);
+void print_arp_spoof_args(ARPSpoofArgs* arp_spoof_args);
+
+void reset_iptables(void);
+void set_iptables(void);

