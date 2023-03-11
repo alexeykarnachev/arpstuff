@@ -42,13 +42,13 @@ typedef struct ARPSpoofArgs {
     int is_terminated;
 } ARPSpoofArgs;
 
-typedef struct ETHProxyArgs {
+typedef struct ETHSnifferArgs {
     int eth_sock;
     Mac victim_mac;
     Mac attacker_mac;
     Mac gateway_mac;
     int is_terminated;
-} ETHProxyArgs;
+} ETHSnifferArgs;
 
 extern Mac BROADCAST_MAC;
 
@@ -102,7 +102,7 @@ int request_target_mac(
     int n_tries
 );
 
-void* start_eth_proxy(void* eth_proxy_args);
+void* start_eth_sniffer(void* eth_sniffer_args);
 
 void print_addr_l(u32 addr);
 void print_mac(Mac mac);

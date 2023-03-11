@@ -1,1 +1,1 @@
-gcc ./src/socket.c ./src/addr.c ./src/arp.c ./src/proxy.c ./src/main.c -lm -pthread -o arpstuff
+gcc ./src/socket.c ./src/addr.c ./src/arp.c ./src/sniffer.c ./src/main.c -lm -pthread -o arpstuff
