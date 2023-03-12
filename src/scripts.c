@@ -1,6 +1,12 @@
 #include "core.h"
 
+Context CONTEXT;
+
 void* start_local_ip_discovery(void* local_ip_discovery_args) {
+    printf("INFO: Starting local IPs discovery...\n");
+
+    CONTEXT.n_local_addrs_hl = 0;
+
     int icmp_sock = get_icmp_socket();
     LocalIPDiscoveryArgs* args = (LocalIPDiscoveryArgs*)
         local_ip_discovery_args;
@@ -13,39 +19,46 @@ void* start_local_ip_discovery(void* local_ip_discovery_args) {
         u32 addr_hl = get_addr_hl_in_net(netaddr_hl, netmask_hl, i);
         send_icmp_request(icmp_sock, i, addr_hl, 0);
     }
-    // u32 addr_hl = get_addr_hl_in_net(netaddr_hl, netmask_hl, 2);
-    // send_icmp_request(icmp_sock, 1, addr_hl, 0);
 
-    // addr_hl = get_addr_hl_in_net(netaddr_hl, netmask_hl, 101);
-    // send_icmp_request(icmp_sock, 1, addr_hl, 0);
-
-    // addr_hl = get_addr_hl_in_net(netaddr_hl, netmask_hl, 1);
-    // send_icmp_request(icmp_sock, 1, addr_hl, 0);
-
+    int timeout_sec = 2;
     while (1) {
         icmp rep = {0};
         u8 buffer[128] = {};
-        if (receive_socket_reply(icmp_sock, buffer, sizeof(buffer), 1)) {
-            iphdr* ip_header = (iphdr*)buffer;
-            icmp body = {0};
-            memcpy(&body, buffer + (ip_header->ihl * 4), sizeof(icmp));
-            if (body.icmp_type != ICMP_ECHOREPLY) {
-                fprintf(
-                    stderr,
-                    "WARNING: receive_icmp_reply, the reply is received, "
-                    "but its "
-                    "type is not equal to ICMP_ECHOREPLY\n"
-                );
-            } else {
-                uint16_t idx = ntohs(body.icmp_hun.ih_idseq.icd_seq);
-                u32 addr_hl = get_addr_hl_in_net(
-                    netaddr_hl, netmask_hl, idx
-                );
-                in_addr addr = {.s_addr = addr_hl};
-                printf("%s is alive\n", inet_ntoa(addr));
-            }
+        int res = receive_socket_reply(
+            icmp_sock, buffer, sizeof(buffer), timeout_sec
+        );
+        if (res != 1) {
+            break;
+        }
+
+        iphdr* ip_header = (iphdr*)buffer;
+        icmp body = {0};
+        memcpy(&body, buffer + (ip_header->ihl * 4), sizeof(icmp));
+        if (body.icmp_type != ICMP_ECHOREPLY) {
+            fprintf(
+                stderr,
+                "WARNING: receive_icmp_reply, the reply is received, "
+                "but its "
+                "type is not equal to ICMP_ECHOREPLY\n"
+            );
+        } else {
+            uint16_t idx = ntohs(body.icmp_hun.ih_idseq.icd_seq);
+            u32 addr_hl = get_addr_hl_in_net(netaddr_hl, netmask_hl, idx);
+            CONTEXT.local_addrs_hl[CONTEXT.n_local_addrs_hl++] = addr_hl;
         }
     }
+
+    printf(
+        "INFO: Local network scanned, we found %d ips: [",
+        CONTEXT.n_local_addrs_hl
+    );
+    for (int i = 0; i < CONTEXT.n_local_addrs_hl; ++i) {
+        print_addr_l(CONTEXT.local_addrs_hl[i]);
+        if (i != CONTEXT.n_local_addrs_hl - 1) {
+            printf(", ");
+        }
+    }
+    printf("]\n");
 }
 
 void* start_arp_spoof(void* arp_spoof_args) {

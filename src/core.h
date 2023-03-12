@@ -35,6 +35,12 @@ typedef struct Mac {
     unsigned char bytes[6];
 } Mac;
 
+typedef struct Context {
+    u32 local_addrs_hl[1 << 16];
+    int n_local_addrs_hl;
+} Context;
+extern Context CONTEXT;
+
 typedef struct LocalIPDiscoveryArgs {
     char* if_name;
 } LocalIPDiscoveryArgs;
