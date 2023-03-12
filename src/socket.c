@@ -14,6 +14,10 @@ int get_arp_socket(void) {
     return get_socket(AF_PACKET, SOCK_DGRAM, htons(ETH_P_ARP));
 }
 
+int get_icmp_socket(void) {
+    return get_socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP);
+}
+
 int get_eth_socket(char* if_name) {
     int eth_sock = get_socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
 
