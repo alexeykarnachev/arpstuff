@@ -31,3 +31,33 @@ int get_eth_socket(char* if_name) {
 
     return eth_sock;
 }
+
+int receive_socket_reply(
+    int sock, u8* buffer, int buffer_size, int timeout_sec
+) {
+    fd_set socks;
+    FD_ZERO(&socks);
+    FD_SET(sock, &socks);
+    timeval timeout;
+    timeout.tv_sec = timeout_sec;
+    timeout.tv_usec = 0;
+
+    if (select(sock + 1, &socks, NULL, NULL, &timeout) <= 0) {
+        fprintf(
+            stderr,
+            "WARNING: receive_sock_reply, failed to select a socket\n"
+        );
+        return 0;
+    }
+
+    if (recv(sock, buffer, buffer_size, 0) < 0) {
+        fprintf(
+            stderr,
+            "WARNING: receive_sock_reply, failed to recv a reply from the "
+            "icmp_sock"
+        );
+        return 0;
+    }
+
+    return 1;
+}

@@ -20,7 +20,8 @@ u32 get_netmask_hl(char* if_name) {
     return netmask_hl;
 }
 
-u32 get_net_addr_hl(char* if_name, u32 addr_hl) {
+u32 get_netaddr_hl(char* if_name) {
+    u32 addr_hl = get_gateway_addr_hl(if_name);
     u32 netmask_hl = get_netmask_hl(if_name);
     return addr_hl & netmask_hl;
 }
@@ -79,6 +80,34 @@ u32 get_interface_addr_hl(char* if_name) {
 
     u32 addr_hl = ((struct sockaddr_in*)&ifr.ifr_addr)->sin_addr.s_addr;
 
+    return addr_hl;
+}
+
+u32 get_n_addr_in_net(u32 netmask_hl) {
+    u32 ones = ~0;
+
+    // Don't add 1 here, because the last address is a broadcast address
+    // and I don't want to count it here
+    u32 n = htonl(ones - netmask_hl);  // + 1;
+    return n;
+}
+
+u32 get_addr_hl_in_net(u32 netaddr_hl, u32 netmask_hl, int idx) {
+    u32 max_idx = get_n_addr_in_net(netmask_hl) - 1;
+    if (idx > max_idx) {
+        in_addr netmask_addr = {.s_addr = netmask_hl};
+        fprintf(
+            stderr,
+            "ERROR: Can't get %d'th address (max is %d) in the netmask: "
+            "%s\n",
+            idx,
+            max_idx,
+            inet_ntoa(netmask_addr)
+        );
+        exit(1);
+    }
+
+    u32 addr_hl = ntohl(htonl(netaddr_hl) + idx);
     return addr_hl;
 }
 

