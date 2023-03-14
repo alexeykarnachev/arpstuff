@@ -14,6 +14,7 @@ void sigint_handler(int sig) {
 #if 1
 void main(void) {
     LOCAL_IP_DISCOVERY_ARGS.if_name = "wlp1s0";
+    LOCAL_IP_DISCOVERY_ARGS.requests_chunk_len = 32;
     start_local_ip_discovery((void*)&LOCAL_IP_DISCOVERY_ARGS);
 }
 #else

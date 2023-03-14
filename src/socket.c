@@ -1,5 +1,7 @@
 #include "core.h"
 
+#define IP_TTL_VAL 128
+
 int get_socket(int domain, int type, int protocol) {
     int sock = socket(domain, type, protocol);
     if (sock < 0) {
@@ -15,7 +17,13 @@ int get_arp_socket(void) {
 }
 
 int get_icmp_socket(void) {
-    return get_socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP);
+    int sock = get_socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP);
+    int ttl = IP_TTL_VAL;
+    if (setsockopt(sock, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl)) < 0) {
+        perror("ERROR: get_icmp_socket, failed to set ttl opt");
+        exit(1);
+    }
+    return sock;
 }
 
 int get_eth_socket(char* if_name) {
@@ -43,19 +51,10 @@ int receive_socket_reply(
     timeout.tv_usec = 0;
 
     if (select(sock + 1, &socks, NULL, NULL, &timeout) <= 0) {
-        fprintf(
-            stderr,
-            "WARNING: receive_sock_reply, failed to select a socket\n"
-        );
         return 0;
     }
 
     if (recv(sock, buffer, buffer_size, 0) < 0) {
-        fprintf(
-            stderr,
-            "WARNING: receive_sock_reply, failed to recv a reply from the "
-            "icmp_sock"
-        );
         return 0;
     }
 

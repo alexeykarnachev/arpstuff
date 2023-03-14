@@ -43,6 +43,7 @@ extern Context CONTEXT;
 
 typedef struct LocalIPDiscoveryArgs {
     char* if_name;
+    int requests_chunk_len;
 } LocalIPDiscoveryArgs;
 
 typedef struct ARPSpoofArgs {
